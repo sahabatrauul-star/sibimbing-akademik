@@ -29,7 +29,7 @@ $dosenList = [
             <?php foreach ($dosenList as $d): ?>
                 <li>
                     <strong><?= htmlspecialchars($d['nama']) ?></strong><br>
-                    <small>Keahlian: <?= htmlspecialchars($d['bidang']) ?> | Jadwal: <?= htmlspecialchars($d['hari']) ?></small>
+                    <small>WhatsApp: 081234567890 | Keahlian: <?= htmlspecialchars($d['bidang']) ?> | Jadwal: <?= htmlspecialchars($d['hari']) ?></small>
                 </li>
             <?php endforeach; ?>
         </ul>

@@ -4,7 +4,7 @@ Proyek Ujian Tengah Semester (UTS) Ganjil T.A. 2026/2027
 **Mata Kuliah:** Rekayasa Perangkat Lunak  
 **Program Studi:** D3 Teknik Komputer (D3TK24A1)  
 **Pengembang:** Raoul (NIM: 240104004)  
-**Dosen Pengampu:** Novemy Triyandari N, SE, MM [Main Branch Update v1.0.1]  
+**Dosen Pengampu:** Novemy Triyandari N, SE, MM / Tim Dosen RPL UDB
 
 ---
 

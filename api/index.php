@@ -8,6 +8,10 @@
  * NIM        : 240104004
  */
 
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 // Data Info Proyek
 $proyek = [
     'nama' => 'SiBimbing (Sistem Penjadwalan & Monitoring Bimbingan Akademik)',
@@ -25,6 +29,54 @@ $slotTersedia = [
     'SLOT-03' => ['dosen' => 'Novemy Triyandari N, SE, MM', 'jam' => '13:30 - 14:30 WIB', 'kuota' => 3, 'hari' => 'Rabu'],
     'SLOT-04' => ['dosen' => 'Novemy Triyandari N, SE, MM', 'jam' => '14:30 - 15:30 WIB', 'kuota' => 1, 'hari' => 'Rabu'],
 ];
+
+// Penyimpanan Data Pengajuan / Pendaftar (Persistent File + Session Fallback)
+$storageFile = sys_get_temp_dir() . '/sibimbing_records_v1.json';
+
+$defaultPendaftar = [
+    [
+        'kode' => 'BOOK-001',
+        'nama' => 'Budi Santoso',
+        'nim' => '240104012',
+        'dosen' => 'Dr. Ir. Handoko, M.T.',
+        'jadwal' => 'Selasa, 09:00 - 10:00 WIB',
+        'topik' => 'Revisi Bab 2 Landasan Teori Jaringan Sensor Nirkabel',
+        'status' => 'DISETUJUI',
+        'waktu' => '17 Okt 2026 08:30 WIB'
+    ],
+    [
+        'kode' => 'BOOK-002',
+        'nama' => 'Siti Nurhaliza',
+        'nim' => '240104019',
+        'dosen' => 'Novemy Triyandari N, SE, MM',
+        'jadwal' => 'Rabu, 13:30 - 14:30 WIB',
+        'topik' => 'Konsultasi Bab 3 Metodologi Penelitian & Pemodelan SDLC',
+        'status' => 'MENUNGGU',
+        'waktu' => '17 Okt 2026 09:15 WIB'
+    ],
+    [
+        'kode' => 'BOOK-003',
+        'nama' => 'Dimas Prasetyo',
+        'nim' => '240104025',
+        'dosen' => 'Dr. Ir. Handoko, M.T.',
+        'jadwal' => 'Selasa, 10:30 - 11:30 WIB',
+        'topik' => 'Pengajuan Proposal Judul Skripsi Smart Agriculture',
+        'status' => 'DITOLAK (SLOT PENUH)',
+        'waktu' => '17 Okt 2026 09:40 WIB'
+    ]
+];
+
+// Muat data yang sudah tersimpan
+if (file_exists($storageFile)) {
+    $pendaftarList = json_decode(file_get_contents($storageFile), true);
+    if (!is_array($pendaftarList)) {
+        $pendaftarList = $defaultPendaftar;
+    }
+} elseif (isset($_SESSION['sibimbing_pendaftar']) && is_array($_SESSION['sibimbing_pendaftar'])) {
+    $pendaftarList = $_SESSION['sibimbing_pendaftar'];
+} else {
+    $pendaftarList = $defaultPendaftar;
+}
 
 $pesanHasil = null;
 
@@ -53,21 +105,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $slot = $slotTersedia[$slotPilihan];
         // Aturan Bisnis RPL: Jika kuota <= 0 maka pengajuan ditolak secara otomatis
         if ($slot['kuota'] <= 0) {
+            $statusFinal = 'DITOLAK (SLOT PENUH)';
             $pesanHasil = [
                 'tipe' => 'warning',
-                'status' => 'DITOLAK (SLOT PENUH)',
+                'status' => $statusFinal,
                 'judul' => 'Reservasi Gagal Diproses',
                 'detail' => "Maaf {$namaMhs} ({$nimMhs}), slot waktu {$slot['hari']}, {$slot['jam']} untuk Dosen {$slot['dosen']} sudah terisi penuh. Silakan pilih slot waktu lain."
             ];
         } else {
-            // Berhasil reservasi
+            $statusFinal = 'DISETUJUI';
             $pesanHasil = [
                 'tipe' => 'success',
                 'status' => 'DISETUJUI (SLOT TERKUNCI)',
                 'judul' => 'Jadwal Bimbingan Berhasil Didaftarkan!',
-                'detail' => "Bimbingan untuk {$namaMhs} ({$nimMhs}) dengan Dosen {$slot['dosen']} dijadwalkan pada hari {$slot['hari']}, {$slot['jam']}. Topik: '{$topik}'. Catatan revisi akan dicatat pada Logbook Monitoring SiBimbing."
+                'detail' => "Bimbingan untuk {$namaMhs} ({$nimMhs}) dengan Dosen {$slot['dosen']} dijadwalkan pada hari {$slot['hari']}, {$slot['jam']}. Topik: '{$topik}'. Catatan revisi telah tercatat pada Logbook Monitoring di bawah."
             ];
         }
+
+        // Tambahkan ke data pendaftar baru
+        $newRecord = [
+            'kode' => 'BOOK-' . str_pad(count($pendaftarList) + 1, 3, '0', STR_PAD_LEFT),
+            'nama' => htmlspecialchars($namaMhs),
+            'nim' => htmlspecialchars($nimMhs),
+            'dosen' => htmlspecialchars($slot['dosen']),
+            'jadwal' => htmlspecialchars($slot['hari']) . ', ' . htmlspecialchars($slot['jam']),
+            'topik' => htmlspecialchars($topik),
+            'status' => $statusFinal,
+            'waktu' => date('d M Y H:i') . ' WIB'
+        ];
+
+        // Simpan di posisi teratas
+        array_unshift($pendaftarList, $newRecord);
+        @file_put_contents($storageFile, json_encode($pendaftarList, JSON_PRETTY_PRINT));
+        $_SESSION['sibimbing_pendaftar'] = $pendaftarList;
     }
 }
 ?>
@@ -89,6 +159,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             --success: #10b981;
             --warning: #f59e0b;
             --danger: #ef4444;
+            --info: #38bdf8;
         }
         * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
         body {
@@ -101,7 +172,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         .container {
             width: 100%;
-            max-width: 820px;
+            max-width: 860px;
         }
         .header-box {
             background: linear-gradient(135deg, #1e1b4b, #312e81);
@@ -149,7 +220,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             color: #e2e8f0;
             display: flex;
             align-items: center;
-            gap: 8px;
+            justify-content: space-between;
             border-bottom: 1px solid var(--border-color);
             padding-bottom: 12px;
             margin-bottom: 18px;
@@ -205,6 +276,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .badge-slot.ready { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
         .badge-slot.full { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
 
+        .badge-status { padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; display: inline-block; }
+        .badge-status.acc { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
+        .badge-status.wait { background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); }
+        .badge-status.rej { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
+
+        .nav-links { display: flex; gap: 10px; margin-bottom: 20px; }
+        .nav-links a {
+            background: #1e293b;
+            color: #94a3b8;
+            padding: 8px 16px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 600;
+            border: 1px solid #334155;
+            transition: all 0.2s;
+        }
+        .nav-links a.active, .nav-links a:hover {
+            background: var(--primary);
+            color: #fff;
+            border-color: var(--primary);
+        }
+
         footer { text-align: center; font-size: 12px; color: var(--text-muted); margin-top: 30px; }
     </style>
 </head>
@@ -223,6 +317,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     </div>
 
+    <!-- Quick Navigation -->
+    <div class="nav-links">
+        <a href="#form-daftar" class="active">📝 Form Pendaftaran</a>
+        <a href="#daftar-pendaftar">📋 Daftar Orang Yang Sudah Daftar (<?= count($pendaftarList) ?>)</a>
+        <a href="jadwal.php">📅 Modul Jadwal Dosen</a>
+    </div>
+
     <!-- Alert Hasil Simulasi Logika -->
     <?php if ($pesanHasil): ?>
         <div class="alert alert-<?= $pesanHasil['tipe'] ?>">
@@ -233,7 +334,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <!-- Tabel Daftar Slot Dosen -->
     <div class="card">
-        <h2 class="card-title">📅 Jadwal Ketersediaan Slot Dosen Pembimbing</h2>
+        <h2 class="card-title">
+            <span>📅 Jadwal Ketersediaan Slot Dosen Pembimbing</span>
+            <span style="font-size: 12px; font-weight: normal; color: var(--text-muted);">Real-time Slot Control</span>
+        </h2>
         <table>
             <thead>
                 <tr>
@@ -265,7 +369,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
 
     <!-- Formulir Simulasi Pengajuan Bimbingan (Logika Tahap 1) -->
-    <div class="card">
+    <div class="card" id="form-daftar">
         <h2 class="card-title">📝 Form Pengajuan Janji Bimbingan Akademik</h2>
         <form method="POST" action="">
             <div class="row">
@@ -289,7 +393,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </option>
                     <?php endforeach; ?>
                 </select>
-                <small style="color: var(--text-muted); font-size: 11px;">*Tips pengujian: Pilih SLOT-02 untuk menguji logika penolakan jika kuota penuh (0).</small>
+                <small style="color: var(--text-muted); font-size: 11px;">*Tips: Pilih SLOT-01 untuk uji status Diterima, atau SLOT-02 untuk uji penolakan kuota penuh (0).</small>
             </div>
 
             <div class="form-group">
@@ -299,6 +403,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             <button type="submit" class="btn-submit">Kirim Pengajuan Bimbingan</button>
         </form>
+    </div>
+
+    <!-- TABEL PENDAFTAR / MONITORING BIMBINGAN (LOGBOOK MAHASISWA) -->
+    <div class="card" id="daftar-pendaftar">
+        <h2 class="card-title">
+            <span>📋 Daftar Riwayat Pengajuan & Monitoring Bimbingan Masuk</span>
+            <span style="font-size: 12px; font-weight: normal; color: #38bdf8;">Total: <?= count($pendaftarList) ?> Mahasiswa</span>
+        </h2>
+        <p style="font-size: 12px; color: var(--text-muted); margin-top: -8px; margin-bottom: 16px;">
+            Setiap mahasiswa yang mengisi formulir bimbingan di atas akan langsung tercatat dan dimonitoring di tabel ini secara otomatis.
+        </p>
+
+        <div style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>No</th>
+                        <th>Mahasiswa</th>
+                        <th>Dosen Pembimbing</th>
+                        <th>Jadwal Slot</th>
+                        <th>Topik Konsultasi</th>
+                        <th>Waktu Daftar</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($pendaftarList as $index => $row): ?>
+                        <tr>
+                            <td><?= $index + 1 ?></td>
+                            <td>
+                                <strong><?= $row['nama'] ?></strong><br>
+                                <code style="color: #94a3b8;"><?= $row['nim'] ?></code>
+                            </td>
+                            <td><?= $row['dosen'] ?></td>
+                            <td style="white-space: nowrap;"><?= $row['jadwal'] ?></td>
+                            <td><span style="color: #cbd5e1;"><?= $row['topik'] ?></span></td>
+                            <td style="font-size: 11px; color: #94a3b8; white-space: nowrap;"><?= $row['waktu'] ?></td>
+                            <td>
+                                <?php if (strpos($row['status'], 'DISETUJUI') !== false): ?>
+                                    <span class="badge-status acc">DISETUJUI</span>
+                                <?php elseif (strpos($row['status'], 'MENUNGGU') !== false): ?>
+                                    <span class="badge-status wait">MENUNGGU</span>
+                                <?php else: ?>
+                                    <span class="badge-status rej">DITOLAK</span>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
     </div>
 
     <footer>
